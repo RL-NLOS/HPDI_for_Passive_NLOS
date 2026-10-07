@@ -127,13 +127,6 @@ NIST, Quickdraw, and SHAPES provide multiple training set sizes. Each size corre
 │       ├── train_label_8000/        # 8,000 images
 │       ├── val_label/              # 1,000 images
 │       └── test_label/             # 1,000 images
-├── Anime_img.zip
-├── NIST_img.zip
-├── Quickdraw_img.zip
-├── SHAPES_img.zip
-├── STL10_img.zip
-├── SuperModel_img.zip
-└── _zip_tools/                     # Packaging scripts, logs, and verification reports
 ```
 
 </details>
