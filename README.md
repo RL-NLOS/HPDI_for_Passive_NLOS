@@ -143,7 +143,7 @@ NIST, Quickdraw, and SHAPES provide multiple training set sizes. Each size corre
 - `raw/train_N/` and `label/train_label_N/`: training images and their corresponding labels.
 - `raw/val/` and `label/val_label/`: validation images and their corresponding labels.
 - `raw/test/` and `label/test_label/`: test images and their corresponding labels.
-- `raw/test2/` and `label/test2_label/`: the additional EMNIST dataset for out-of-distribution （OOD） generalization testing.
+- `raw/test2/` and `label/test2_label/`: the additional EMNIST dataset for out-of-distribution (OOD) generalization testing.
 
 Images in each directory use consecutive five-digit filenames starting from `00000.bmp`. Images and labels are matched by filename within the corresponding split. For example:
 
