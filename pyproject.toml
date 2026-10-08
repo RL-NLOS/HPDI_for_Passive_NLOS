@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hpdi-reconstruction"
+version = "0.1.0"
+description = "FISTA preprocessing, separate branch training, and joint feature fusion for HPDI"
+readme = "README.md"
+authors = [
+  {name = "Rui Liang"},
+  {name = "Zhenjun Xu"},
+  {name = "Xi Tong"},
+  {name = "Jiangxin Yang"},
+  {name = "Xin Li"},
+  {name = "Yanpeng Cao"},
+]
+keywords = ["passive NLOS imaging", "light transport", "physics-data-driven imaging"]
+requires-python = ">=3.9,<3.13"
+dependencies = [
+  "torch>=1.11",
+  "torchvision>=0.12",
+  "numpy>=1.21,<2",
+  "Pillow>=9",
+  "tqdm>=4.62",
+]
+
+[project.urls]
+Paper = "https://doi.org/10.1109/TCI.2026.3653304"
+
+[project.scripts]
+hpdi-train = "hpdi.cli:train_main"
+hpdi-test = "hpdi.cli:test_main"
+hpdi-fusion-train = "hpdi.cli:fusion_train_main"
+hpdi-fusion-test = "hpdi.cli:fusion_test_main"
+hpdi-fista = "hpdi.cli:fista_main"
+
+[tool.setuptools.packages.find]
+include = ["hpdi*"]
+namespaces = false
+
+[tool.setuptools.package-data]
+hpdi = ["transport_matrix/*.pt"]

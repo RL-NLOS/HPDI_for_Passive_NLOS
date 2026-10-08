@@ -1,0 +1,33 @@
+# Python and installation outputs
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.env
+.env.*
+
+# Experiment inputs and generated outputs
+/data/
+/datasets/
+/checkpoints/
+/model/
+/output/
+/results/
+*.pt
+# Include the transport matrices supplied with this implementation.
+!/hpdi/transport_matrix/*.pt
+*.pth
+*.pkl
+*.npy
+*.npz
+*.mat
+*_loss_log.txt
+*_options.json
+*_metrics.json
+
+# OS files
+.DS_Store
+Thumbs.db

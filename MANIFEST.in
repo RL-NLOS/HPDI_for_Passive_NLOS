@@ -1,0 +1,4 @@
+include HPDI_*.py
+include requirements.txt
+include CITATION.cff
+include .gitignore

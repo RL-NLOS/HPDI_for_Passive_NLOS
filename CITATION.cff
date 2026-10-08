@@ -1,0 +1,40 @@
+cff-version: 1.2.0
+message: "If you use this code, please cite the paper in preferred-citation."
+type: software
+title: "HPDI: Neural Networks Meet Light Transport Physics"
+version: "0.1.0"
+authors:
+  - family-names: Liang
+    given-names: Rui
+  - family-names: Xu
+    given-names: Zhenjun
+  - family-names: Tong
+    given-names: Xi
+  - family-names: Yang
+    given-names: Jiangxin
+  - family-names: Li
+    given-names: Xin
+  - family-names: Cao
+    given-names: Yanpeng
+preferred-citation:
+  type: article
+  title: "Neural Networks Meet Light Transport Physics for Passive Non-Line-of-Sight Imaging Enhancement"
+  authors:
+    - family-names: Liang
+      given-names: Rui
+    - family-names: Xu
+      given-names: Zhenjun
+    - family-names: Tong
+      given-names: Xi
+    - family-names: Yang
+      given-names: Jiangxin
+    - family-names: Li
+      given-names: Xin
+    - family-names: Cao
+      given-names: Yanpeng
+  journal: "IEEE Transactions on Computational Imaging"
+  volume: 12
+  start: 282
+  end: 296
+  year: 2026
+  doi: "10.1109/TCI.2026.3653304"
