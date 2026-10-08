@@ -233,7 +233,7 @@ data/HPDI/SHAPES_img/
 
 Images and labels are paired by independently sorted filenames. Keep the same sample order and matching image counts; matching filenames are recommended. The loaders preserve the BMP image mode and use `ToTensor` without resizing or data augmentation.
 
-For the supplied matrix, use 32×32 measurements and reconstruction targets. `Anime_img`, `SHAPES_img`, and `SuperModel_img` default to three channels; other dataset names default to one channel. This automatic choice is based on the folder name. Set `--channels 1` or `--channels 3` explicitly when the actual image mode differs from the default, and use the same value for separate training, joint training, and evaluation.
+For the supplied matrix, use 32×32 measurements and reconstruction targets. `Anime_img`, `SHAPES_img`, `STL10_img`, and `SuperModel_img` default to three channels; other dataset names default to one channel. This automatic choice is based on the folder name. Set `--channels 1` or `--channels 3` explicitly when the actual image mode differs from the default, and use the same value for separate training, joint training, and evaluation.
 
 The additional NIST `test2/` split is not selected by the default evaluation commands. To evaluate it, create a separate working dataset whose `raw/test/` and `label/test_label/` contain the `test2/` measurements and `test2_label/` labels, generate its `ctf/test/` with `--split test`, and use the checkpoints trained on the original NIST training subset.
 
@@ -361,30 +361,6 @@ Reconstructed images retain the input sample filenames. `evaluation_metrics.json
 PSNR is computed per image after the original rounding and clipping to uint8, then averaged over the dataset. Inference timing includes the network inference path and its device transfers, with CUDA synchronization when applicable; FISTA preprocessing, data loading, image saving, and PSNR calculation are excluded.
 
 Use `--output-dir` to change the output folder. Use `--checkpoint` for a single branch, or `--raw-checkpoint`, `--ctf-checkpoint`, and `--fusion-checkpoint` for the joint system, to select custom weights. For the NIST OOD working dataset described above, pass all three jointly trained NIST checkpoint paths explicitly.
-
-### Parameters and Reproduction Records
-
-Every entry point uses argparse. Inspect the available options with:
-
-```bash
-python HPDI_fista.py --help
-python HPDI_train.py --help
-python HPDI_Fusion_train.py --help
-python HPDI_test.py --help
-python HPDI_Fusion_test.py --help
-```
-
-Common settings include `--data-root`, `--dataset-name`, `--device`, `--batch-size`, `--num-workers`, and `--seed`. Network commands also accept `--channels`. By default, `--dataset-name` is `SHAPES_img`, `--num-workers` is 0, and the inference batch size is 1. The code respects `CUDA_VISIBLE_DEVICES`.
-
-Each run saves its resolved parameters and Python, PyTorch, NumPy, and device information. Training records and validation-loss logs are stored beside the checkpoints. FISTA records are saved in each CTF split directory, and evaluation records are saved in the corresponding output folder.
-
-The FISTA record additionally contains the matrix SHA-256, shape, source and computation dtypes, scale factor, and actual Lipschitz constant. The supplied matrix has this SHA-256:
-
-```text
-b32c6b67b4557bb10e5cb6faf362ed23f519401e306a18f3b34c84ab5a3b89b1
-```
-
-The full preprocessing, separate training, joint training, and evaluation pipeline has been checked with synthetic paired BMP images and the supplied matrix. Reproducing the paper's quantitative results requires the released experimental data, the selected training subset, and matching acquisition and preprocessing conditions.
 
 ## Citation
 
