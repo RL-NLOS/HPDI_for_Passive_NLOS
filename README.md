@@ -144,3 +144,262 @@ Images in each directory use consecutive five-digit filenames starting from `000
 Anime_img/raw/train_36000/00000.bmp
 Anime_img/label/train_label_36000/00000.bmp
 ```
+
+## Code
+
+HPDI combines a light-transport-based reconstruction path with an implicit reconstruction path. FISTA first produces coarse reconstructions from the RAW measurements. The two reconstruction networks are trained separately, then jointly optimized with the fusion network.
+
+| Paper module | Python class | Input and role |
+| --- | --- | --- |
+| Refinement Network (RN) | `RefinementNet` | Refines the coarse images reconstructed by FISTA |
+| Implicit Reconstruction Network (IRN) | `ImplicitReconstructionNet` | Learns reconstruction directly from RAW measurements |
+| Fusion Network (FN) | `FusionNet` | Fuses four scales of IRN and RN features to predict the final reconstruction |
+
+RN and IRN share the same U-shaped architecture but have independent weights. The fusion blocks are implemented by `AdaptiveFeatureSelection` and `CrossAttentionFusion`.
+
+The complete reproduction workflow is:
+
+**FISTA preprocessing → separate IRN and RN training → joint IRN/RN/FN training → evaluation.**
+
+### Repository Structure
+
+```text
+HPDI_for_Passive_NLOS/
+├── HPDI_fista.py                    # Generate coarse reconstruction (CTF) images
+├── HPDI_train.py                    # Train IRN or RN separately
+├── HPDI_Fusion_train.py             # Jointly train IRN, RN, and FN
+├── HPDI_test.py                     # Evaluate one separately trained branch
+├── HPDI_Fusion_test.py              # Evaluate the jointly trained system
+├── hpdi/
+│   ├── algorithms/fista.py          # Reusable FISTA solver
+│   ├── transport_matrix/
+│   │   └── real_trans_matrix.pt     # Supplied light transport matrix
+│   ├── models/
+│   │   ├── reconstruction.py        # RN and IRN architectures
+│   │   └── fusion.py                # FN and its fusion components
+│   ├── data/                       # BMP datasets and data loaders
+│   ├── options/                    # Shared argparse configuration
+│   ├── reconstruction.py           # FISTA preprocessing workflow
+│   ├── training.py                 # Separate and joint training workflows
+│   ├── evaluation.py               # Inference, image saving, and PSNR
+│   ├── runtime.py                  # Device setup and experiment records
+│   └── metrics.py                  # Image quality metrics
+├── requirements.txt
+├── pyproject.toml
+├── MANIFEST.in
+├── CITATION.cff
+└── README.md
+```
+
+### Installation
+
+The package supports Python 3.9–3.12. Install a matching PyTorch and torchvision build for your Python version and CPU/CUDA environment, then install the remaining dependencies.
+
+```bash
+git clone https://github.com/RL-NLOS/HPDI_for_Passive_NLOS.git
+cd HPDI_for_Passive_NLOS
+python -m pip install -r requirements.txt
+```
+
+To use the package and its command-line entry points, install it in editable mode:
+
+```bash
+python -m pip install -e .
+```
+
+The installed commands `hpdi-fista`, `hpdi-train`, `hpdi-fusion-train`, `hpdi-test`, and `hpdi-fusion-test` accept the same arguments as their corresponding Python scripts. The transport matrix is included in the package; its default path is resolved independently of the working directory.
+
+Run the commands below from the repository root. They use `--device auto`, which selects CUDA when available and otherwise uses the CPU. Use `--device cuda:0`, `--device cuda:1`, or `--device cpu` to select a device explicitly.
+
+### Preparing a Training Subset
+
+The downloaded datasets use `train_N/` and `train_label_N/` to distinguish training set sizes. The training code expects a selected subset under `train/` and `train_label/`.
+
+Choose one training size and create the following working layout. For example, to use the 6,400-pair SHAPES subset, copy `SHAPES_img/raw/train_6400/` to `data/HPDI/SHAPES_img/raw/train/`, and copy `SHAPES_img/label/train_label_6400/` to `data/HPDI/SHAPES_img/label/train_label/`. Copy the corresponding validation and test folders to the locations below. Keep the downloaded collection if you plan to compare multiple training sizes.
+
+```text
+data/HPDI/SHAPES_img/
+├── raw/
+│   ├── train/*.bmp
+│   ├── val/*.bmp
+│   └── test/*.bmp
+└── label/
+    ├── train_label/*.bmp
+    ├── val_label/*.bmp
+    └── test_label/*.bmp
+```
+
+`--data-root` points to the parent of the dataset folders, such as `data/HPDI`, rather than to `SHAPES_img` itself. Use the same dataset name and working subset in every stage. Select one `train_N/` subset per experiment to retain the chosen training-set size.
+
+Images and labels are paired by independently sorted filenames. Keep the same sample order and matching image counts; matching filenames are recommended. The loaders preserve the BMP image mode and use `ToTensor` without resizing or data augmentation.
+
+For the supplied matrix, use 32×32 measurements and reconstruction targets. `Anime_img`, `SHAPES_img`, and `SuperModel_img` default to three channels; other dataset names default to one channel. This automatic choice is based on the folder name. Set `--channels 1` or `--channels 3` explicitly when the actual image mode differs from the default, and use the same value for separate training, joint training, and evaluation.
+
+The additional NIST `test2/` split is not selected by the default evaluation commands. To evaluate it, create a separate working dataset whose `raw/test/` and `label/test_label/` contain the `test2/` measurements and `test2_label/` labels, generate its `ctf/test/` with `--split test`, and use the checkpoints trained on the original NIST training subset.
+
+### Light Transport Matrix
+
+The supplied file `hpdi/transport_matrix/real_trans_matrix.pt` contains a `1024 × 1024` float64 tensor. Its shape follows `y = T x`: rows index measurement pixels and columns index reconstruction pixels. FISTA uses the original float32 conversion and a default matrix scale of 1. Each channel is flattened independently in PyTorch's row-major order.
+
+The matrix must match the imaging geometry and measurement preprocessing. For another experimental configuration, specify its matrix with `--matrix-path` and the corresponding reconstruction size with `--height` and `--width`. The reconstruction pixel count must equal the number of matrix columns, and each measurement channel must have as many pixels as there are matrix rows. Network input and target sizes must be compatible with the architecture, including spatial dimensions divisible by 8.
+
+### 1. FISTA Preprocessing
+
+Generate coarse reconstructions for the training, validation, and test splits:
+
+```bash
+python HPDI_fista.py --data-root data/HPDI --dataset-name SHAPES_img --device auto
+```
+
+This command uses the supplied matrix and defaults to `--split all`. It creates:
+
+```text
+data/HPDI/SHAPES_img/ctf/
+├── train/*.bmp
+├── val/*.bmp
+└── test/*.bmp
+```
+
+The CTF images retain the RAW filenames and channel count, so grayscale measurements produce single-channel CTF images. This step needs RAW measurements and the transport matrix; it does not use labels.
+
+| FISTA parameter | Default |
+| --- | --- |
+| `--lambda` | `1e-4` |
+| `--max-iter` | `200` |
+| `--tol` | `1e-6` |
+| `--matrix-scale` | `1.0` |
+| `--height`, `--width` | `32`, `32` |
+| `--stopping-rule` | `legacy` |
+
+The matrix transpose and exact Lipschitz constant are computed once and reused across all splits, samples, and channels. The `legacy` stopping rule preserves the original early-return behavior; `latest` explicitly selects the new iterate on convergence.
+
+For one split, use `--split train`, `--split val`, or `--split test`. For custom folders, `--input-dir` and `--output-dir` refer to image directories for a single split, or to their parent directories for `--split all`.
+
+### 2. Separate Training
+
+Train the IRN on RAW measurements and the RN on FISTA reconstructions:
+
+```bash
+python HPDI_train.py --data-root data/HPDI --dataset-name SHAPES_img --input-type raw --device auto
+python HPDI_train.py --data-root data/HPDI --dataset-name SHAPES_img --input-type ctf --device auto
+```
+
+The first command uses `raw/train` and `label/train_label`; the second uses `ctf/train` and the same labels. Validation uses each branch's `val/` images and `label/val_label/`.
+
+The network role is inferred from the input folder: `raw` selects IRN and `ctf` selects RN. For a custom coarse-image folder, specify the role explicitly, for example `--input-type coarse --network rn`.
+
+The best checkpoint for each branch is selected by validation BCE loss and saved under `data/HPDI/SHAPES_img/model/`:
+
+| Checkpoint | Network |
+| --- | --- |
+| `raw_best.pkl` | Separately trained IRN |
+| `ctf_best.pkl` | Separately trained RN |
+
+### 3. Joint Training
+
+After both branch checkpoints are available, jointly train IRN, RN, and FN:
+
+```bash
+python HPDI_Fusion_train.py --data-root data/HPDI --dataset-name SHAPES_img --device auto
+```
+
+The command loads `raw_best.pkl` and `ctf_best.pkl`. FN starts from random initialization and combines the multi-scale features in IRN-then-RN order. The final reconstruction is supervised by the ground truth, and gradients update all three networks.
+
+The three checkpoints from the same best validation epoch are saved together:
+
+```text
+data/HPDI/SHAPES_img/model/
+├── joint_raw_best.pkl
+├── joint_ctf_best.pkl
+└── joint_fusion_best.pkl
+```
+
+Use `--raw-checkpoint` and `--ctf-checkpoint` to select branch weights from another location. `--model-dir` changes the checkpoint directory; `--name` changes the save prefix. When using custom names, provide the corresponding checkpoint paths during evaluation.
+
+### Training Configuration
+
+The default training settings are:
+
+| Stage | Epochs | Initial learning rate | Schedule |
+| --- | --- | --- | --- |
+| Separate IRN | 100 | `1e-4` | Cosine annealing to `1e-6` |
+| Separate RN | 30 | `1e-4` | StepLR: multiply by 0.5 every 20 epochs |
+| Joint IRN and RN | 10 | `1e-6` | Fixed branch learning rate |
+| Joint FN | 10 | `1e-4` | StepLR: multiply by 0.5 every 10 epochs |
+
+All networks use Adam with `betas=(0.9, 0.999)`, weight decay `1e-4`, and BCE loss. The training batch size is 16, the validation batch size follows the training batch size, and the training seed is 150.
+
+Only the FN optimizer is scheduled during joint training. With the default 10 joint epochs, its first learning-rate reduction occurs after the last epoch, so FN uses `1e-4` throughout those 10 epochs. If the separate-training epoch count is changed, the default StepLR interval becomes `max(1, epochs * 2 // 3)`.
+
+Use `--epochs`, `--lr`, `--branch-lr` (joint training), `--betas`, `--weight-decay`, `--scheduler`, `--scheduler-step-size`, `--scheduler-gamma`, and `--min-lr` to override these settings.
+
+### 4. Evaluation
+
+Evaluate the jointly trained system and report PSNR:
+
+```bash
+python HPDI_Fusion_test.py --data-root data/HPDI --dataset-name SHAPES_img --device auto --compute-psnr
+```
+
+This loads `joint_raw_best.pkl`, `joint_ctf_best.pkl`, and `joint_fusion_best.pkl`. Evaluation requires corresponding RAW images, CTF images, and labels in the test split. Generate the CTF test images before running this command.
+
+To evaluate the separately trained branches:
+
+```bash
+python HPDI_test.py --data-root data/HPDI --dataset-name SHAPES_img --input-type raw --device auto
+python HPDI_test.py --data-root data/HPDI --dataset-name SHAPES_img --input-type ctf --device auto
+```
+
+| Evaluation | Default checkpoint(s) | Output folder under the dataset |
+| --- | --- | --- |
+| RAW / IRN | `raw_best.pkl` | `output_raw/` |
+| CTF / RN | `ctf_best.pkl` | `output_ctf/` |
+| Joint system | The three `joint_*_best.pkl` files | `output_fusion/` |
+
+Reconstructed images retain the input sample filenames. `evaluation_metrics.json` records the sample count, average inference time in seconds per image, and average PSNR in dB when computed. Single-branch evaluation always computes PSNR; joint evaluation enables it with `--compute-psnr`.
+
+PSNR is computed per image after the original rounding and clipping to uint8, then averaged over the dataset. Inference timing includes the network inference path and its device transfers, with CUDA synchronization when applicable; FISTA preprocessing, data loading, image saving, and PSNR calculation are excluded.
+
+Use `--output-dir` to change the output folder. Use `--checkpoint` for a single branch, or `--raw-checkpoint`, `--ctf-checkpoint`, and `--fusion-checkpoint` for the joint system, to select custom weights. For the NIST OOD working dataset described above, pass all three jointly trained NIST checkpoint paths explicitly.
+
+### Parameters and Reproduction Records
+
+Every entry point uses argparse. Inspect the available options with:
+
+```bash
+python HPDI_fista.py --help
+python HPDI_train.py --help
+python HPDI_Fusion_train.py --help
+python HPDI_test.py --help
+python HPDI_Fusion_test.py --help
+```
+
+Common settings include `--data-root`, `--dataset-name`, `--device`, `--batch-size`, `--num-workers`, and `--seed`. Network commands also accept `--channels`. By default, `--dataset-name` is `SHAPES_img`, `--num-workers` is 0, and the inference batch size is 1. The code respects `CUDA_VISIBLE_DEVICES`.
+
+Each run saves its resolved parameters and Python, PyTorch, NumPy, and device information. Training records and validation-loss logs are stored beside the checkpoints. FISTA records are saved in each CTF split directory, and evaluation records are saved in the corresponding output folder.
+
+The FISTA record additionally contains the matrix SHA-256, shape, source and computation dtypes, scale factor, and actual Lipschitz constant. The supplied matrix has this SHA-256:
+
+```text
+b32c6b67b4557bb10e5cb6faf362ed23f519401e306a18f3b34c84ab5a3b89b1
+```
+
+The full preprocessing, separate training, joint training, and evaluation pipeline has been checked with synthetic paired BMP images and the supplied matrix. Reproducing the paper's quantitative results requires the released experimental data, the selected training subset, and matching acquisition and preprocessing conditions.
+
+## Citation
+
+If you use the code or datasets in your research, please cite the paper:
+
+```bibtex
+@article{liang2026hpdi,
+  author  = {Liang, Rui and Xu, Zhenjun and Tong, Xi and Yang, Jiangxin and Li, Xin and Cao, Yanpeng},
+  title   = {Neural Networks Meet Light Transport Physics for Passive Non-Line-of-Sight Imaging Enhancement},
+  journal = {IEEE Transactions on Computational Imaging},
+  volume  = {12},
+  pages   = {282--296},
+  year    = {2026},
+  doi     = {10.1109/TCI.2026.3653304}
+}
+```
+
+The repository also provides `CITATION.cff` with this paper as the preferred citation.
