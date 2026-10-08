@@ -243,7 +243,7 @@ The supplied file `hpdi/transport_matrix/real_trans_matrix.pt` contains a `1024 
 
 The matrix must match the imaging geometry and measurement preprocessing. For another experimental configuration, specify its matrix with `--matrix-path` and the corresponding reconstruction size with `--height` and `--width`. The reconstruction pixel count must equal the number of matrix columns, and each measurement channel must have as many pixels as there are matrix rows. Network input and target sizes must be compatible with the architecture, including spatial dimensions divisible by 8.
 
-### 1. FISTA Preprocessing
+### FISTA Preprocessing
 
 Generate coarse reconstructions for the training, validation, and test splits:
 
@@ -275,7 +275,7 @@ The matrix transpose and exact Lipschitz constant are computed once and reused a
 
 For one split, use `--split train`, `--split val`, or `--split test`. For custom folders, `--input-dir` and `--output-dir` refer to image directories for a single split, or to their parent directories for `--split all`.
 
-### 2. Separate Training
+### Separate Training
 
 Train the IRN on RAW measurements and the RN on FISTA reconstructions:
 
@@ -295,7 +295,7 @@ The best checkpoint for each branch is selected by validation BCE loss and saved
 | `raw_best.pkl` | Separately trained IRN |
 | `ctf_best.pkl` | Separately trained RN |
 
-### 3. Joint Training
+### Joint Training
 
 After both branch checkpoints are available, jointly train IRN, RN, and FN:
 
@@ -315,52 +315,6 @@ data/HPDI/SHAPES_img/model/
 ```
 
 Use `--raw-checkpoint` and `--ctf-checkpoint` to select branch weights from another location. `--model-dir` changes the checkpoint directory; `--name` changes the save prefix. When using custom names, provide the corresponding checkpoint paths during evaluation.
-
-### Training Configuration
-
-The default training settings are:
-
-| Stage | Epochs | Initial learning rate | Schedule |
-| --- | --- | --- | --- |
-| Separate IRN | 100 | `1e-4` | Cosine annealing to `1e-6` |
-| Separate RN | 30 | `1e-4` | StepLR: multiply by 0.5 every 20 epochs |
-| Joint IRN and RN | 10 | `1e-6` | Fixed branch learning rate |
-| Joint FN | 10 | `1e-4` | StepLR: multiply by 0.5 every 10 epochs |
-
-All networks use Adam with `betas=(0.9, 0.999)`, weight decay `1e-4`, and BCE loss. The training batch size is 16, the validation batch size follows the training batch size, and the training seed is 150.
-
-Only the FN optimizer is scheduled during joint training. With the default 10 joint epochs, its first learning-rate reduction occurs after the last epoch, so FN uses `1e-4` throughout those 10 epochs. If the separate-training epoch count is changed, the default StepLR interval becomes `max(1, epochs * 2 // 3)`.
-
-Use `--epochs`, `--lr`, `--branch-lr` (joint training), `--betas`, `--weight-decay`, `--scheduler`, `--scheduler-step-size`, `--scheduler-gamma`, and `--min-lr` to override these settings.
-
-### 4. Evaluation
-
-Evaluate the jointly trained system and report PSNR:
-
-```bash
-python HPDI_Fusion_test.py --data-root data/HPDI --dataset-name SHAPES_img --device auto --compute-psnr
-```
-
-This loads `joint_raw_best.pkl`, `joint_ctf_best.pkl`, and `joint_fusion_best.pkl`. Evaluation requires corresponding RAW images, CTF images, and labels in the test split. Generate the CTF test images before running this command.
-
-To evaluate the separately trained branches:
-
-```bash
-python HPDI_test.py --data-root data/HPDI --dataset-name SHAPES_img --input-type raw --device auto
-python HPDI_test.py --data-root data/HPDI --dataset-name SHAPES_img --input-type ctf --device auto
-```
-
-| Evaluation | Default checkpoint(s) | Output folder under the dataset |
-| --- | --- | --- |
-| RAW / IRN | `raw_best.pkl` | `output_raw/` |
-| CTF / RN | `ctf_best.pkl` | `output_ctf/` |
-| Joint system | The three `joint_*_best.pkl` files | `output_fusion/` |
-
-Reconstructed images retain the input sample filenames. `evaluation_metrics.json` records the sample count, average inference time in seconds per image, and average PSNR in dB when computed. Single-branch evaluation always computes PSNR; joint evaluation enables it with `--compute-psnr`.
-
-PSNR is computed per image after the original rounding and clipping to uint8, then averaged over the dataset. Inference timing includes the network inference path and its device transfers, with CUDA synchronization when applicable; FISTA preprocessing, data loading, image saving, and PSNR calculation are excluded.
-
-Use `--output-dir` to change the output folder. Use `--checkpoint` for a single branch, or `--raw-checkpoint`, `--ctf-checkpoint`, and `--fusion-checkpoint` for the joint system, to select custom weights. For the NIST OOD working dataset described above, pass all three jointly trained NIST checkpoint paths explicitly.
 
 ## Citation
 
